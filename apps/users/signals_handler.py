@@ -2,12 +2,11 @@
 #
 
 from django.dispatch import receiver
-from django_auth_ldap.backend import populate_user
-# from django.db.models.signals import post_save
+from django.db.models.signals import post_save, m2m_changed
 
 from common.utils import get_logger
 from .signals import post_user_create
-# from .models import User
+from .models import User
 
 logger = get_logger(__file__)
 
@@ -31,9 +30,12 @@ def on_user_create(sender, user=None, **kwargs):
         send_user_created_mail(user)
 
 
-@receiver(populate_user)
-def on_ldap_create_user(sender, user, ldap_user, **kwargs):
-    if user:
-        user.source = user.SOURCE_LDAP
-        user.save()
-
+@receiver(m2m_changed, sender=User.groups.through)
+def on_user_groups_change(sender, instance=None, action='', **kwargs):
+    """
+    资产节点发生变化时，刷新节点
+    """
+    if action.startswith('post'):
+        logger.debug("User group member change signal recv: {}".format(instance))
+        from perms.utils import AssetPermissionUtilV2
+        AssetPermissionUtilV2.expire_all_user_tree_cache()

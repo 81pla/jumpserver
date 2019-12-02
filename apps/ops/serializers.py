@@ -1,14 +1,30 @@
 # ~*~ coding: utf-8 ~*~
 from __future__ import unicode_literals
 from rest_framework import serializers
+from django.shortcuts import reverse
 
-from .models import Task, AdHoc, AdHocRunHistory
+from .models import Task, AdHoc, AdHocRunHistory, CommandExecution
+
+
+class CeleryResultSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    result = serializers.JSONField()
+    state = serializers.CharField(max_length=16)
+
+
+class CeleryTaskSerializer(serializers.Serializer):
+    pass
 
 
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = '__all__'
+        fields = [
+            'id', 'name', 'interval', 'crontab', 'is_periodic',
+            'is_deleted', 'comment', 'created_by', 'date_created',
+            'versions', 'is_success', 'timedelta', 'assets_amount',
+            'date_updated', 'history_summary',
+        ]
 
 
 class AdHocSerializer(serializers.ModelSerializer):
@@ -42,7 +58,7 @@ class AdHocRunHistorySerializer(serializers.ModelSerializer):
     @staticmethod
     def get_stat(obj):
         return {
-            "total": len(obj.adhoc.hosts),
+            "total": obj.adhoc.hosts.count(),
             "success": len(obj.summary.get("contacted", [])),
             "failed": len(obj.summary.get("dark", [])),
         }
@@ -51,3 +67,23 @@ class AdHocRunHistorySerializer(serializers.ModelSerializer):
         fields = super().get_field_names(declared_fields, info)
         fields.extend(['summary', 'short_id'])
         return fields
+
+
+class CommandExecutionSerializer(serializers.ModelSerializer):
+    result = serializers.JSONField(read_only=True)
+    log_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommandExecution
+        fields = [
+            'id', 'hosts', 'run_as', 'command', 'result', 'log_url',
+            'is_finished', 'date_created', 'date_finished'
+        ]
+        read_only_fields = [
+            'result', 'is_finished', 'log_url', 'date_created',
+            'date_finished'
+        ]
+
+    @staticmethod
+    def get_log_url(obj):
+        return reverse('api-ops:celery-task-log', kwargs={'pk': obj.id})
